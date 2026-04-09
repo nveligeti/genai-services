@@ -18,6 +18,21 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         f"Starting {settings.app_name} v{settings.app_version} "
         f"[{settings.environment}]"
     )
+
+    # ── Phase 3: Qdrant collection setup ────────────────────────
+    if settings.environment != "testing":
+        try:
+            from app.modules.rag.repository import VectorRepository
+            repo = VectorRepository(
+                host=settings.qdrant_host,
+                port=settings.qdrant_port,
+                collection_name=settings.rag_collection_name,
+                dimension=settings.embedding_dimension,
+            )
+            await repo.ensure_collection()
+        except Exception as e:
+            logger.warning(f"Qdrant not available: {e}")
+
     yield
     logger.info(f"Shutting down {settings.app_name}")
 
@@ -29,7 +44,8 @@ def create_app() -> FastAPI:
     from app.middleware import register_middleware
     from app.modules.health.router import router as health_router
     from app.modules.documents.router import router as documents_router  # NEW
-    
+    from app.modules.rag.router import router as rag_router 
+
     settings = get_settings()
 
     app = FastAPI(
@@ -45,6 +61,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     app.include_router(health_router)
     app.include_router(documents_router)   # NEW
+    app.include_router(rag_router)  
     return app
 
 

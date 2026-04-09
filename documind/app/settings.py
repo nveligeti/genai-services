@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     # Vector Database (Phase 3)
     qdrant_host: str = "localhost"
     qdrant_port: int = 6333
+    # RAG (Phase 3)
+    embedding_model: str = "mock"
+    embedding_dimension: int = 384
+    rag_collection_name: str = "documind"
+    rag_chunk_size: int = 512
+    rag_chunk_overlap: int = 50
+    rag_retrieval_limit: int = 3
+    rag_score_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
 
     # Redis (Phase 7)
     redis_url: str = "redis://localhost:6379"

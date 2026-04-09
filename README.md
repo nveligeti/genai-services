@@ -80,3 +80,28 @@ git push origin main
 | 4 | SSE streaming chat endpoint | ⏳ Pending |
 | 5 | Postgres + Alembic replaces in-memory store | ⏳ Pending |
 | 6 | JWT authentication | ⏳ Pending |
+
+
+Phase 3 delivers:
+─────────────────────────────────────────────────────
+✅ Qdrant vector database setup (Chapter 5)
+✅ Text chunking + embedding pipeline (Chapter 5)
+✅ Vector repository pattern (Chapter 7)
+✅ RAG service — store + retrieve (Chapter 5)
+✅ Query endpoint (Chapter 2)
+✅ Semantic search with cosine similarity (Chapter 5)
+✅ Unit + integration + E2E tests (Chapter 11)
+
+Phase 3 connects Chapters 5 and 7 — building the vector database pipeline that lets users query their uploaded documents semantically.
+
+Phase 4 delivers:
+─────────────────────────────────────────────────────
+✅ SSE streaming chat endpoint (Chapter 6)
+✅ RAG-augmented prompt builder (Chapter 10)
+✅ Chat schemas with conversation history (Chapter 4)
+✅ Async stream generator (Chapter 5)
+✅ DONE sentinel + error handling (Chapter 6)
+✅ Unit + integration + E2E tests (Chapter 11)
+
+Phase 4 connects Chapters 6, 5, and 10 — real-time streaming responses that combine RAG context with the Mock LLM using Server-Sent Events.
+

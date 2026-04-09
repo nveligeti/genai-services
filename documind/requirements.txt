@@ -18,3 +18,9 @@ httpx==0.27.2
 
 # PDF extraction (Chapter 5)
 pypdf==4.3.1
+
+# Vector database (Phase 3)
+qdrant-client==1.11.1
+
+# Embeddings (Phase 3)
+sentence-transformers==3.1.1
