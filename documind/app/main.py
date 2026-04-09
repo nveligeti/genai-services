@@ -28,7 +28,8 @@ def create_app() -> FastAPI:
     from app.exceptions import register_exception_handlers
     from app.middleware import register_middleware
     from app.modules.health.router import router as health_router
-
+    from app.modules.documents.router import router as documents_router  # NEW
+    
     settings = get_settings()
 
     app = FastAPI(
@@ -43,7 +44,7 @@ def create_app() -> FastAPI:
     register_middleware(app)
     register_exception_handlers(app)
     app.include_router(health_router)
-
+    app.include_router(documents_router)   # NEW
     return app
 
 

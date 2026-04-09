@@ -49,3 +49,15 @@ def app(test_settings: Settings):
 def client(app) -> TestClient:
     with TestClient(app) as c:
         yield c
+
+@pytest.fixture(autouse=True)
+def clear_document_store():
+    """
+    Clear in-memory document store before every test.
+    Chapter 11: test isolation — shared mutable state reset.
+    Prevents documents from one test appearing in another.
+    """
+    import app.modules.documents.service as svc
+    svc._document_store.clear()
+    yield
+    svc._document_store.clear()

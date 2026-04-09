@@ -63,13 +63,20 @@ git push origin main
 
 ## Status
 
-**Tests:** 17 passed ✅
-
-**Completed — Phase 1:** Project structure, settings, middleware, health endpoint, exception handlers.
-
-**Up next — Phase 2:** Mock LLM client + document upload endpoint (Chapters 3, 4, 5).
+**Tests:** 46 passed ✅
 
 ## Key Fixes
 
 - Pinned `pydantic-settings==2.3.4` (no Rust needed)
 - Monkey-patched `get_settings` in `conftest.py` to fix `lru_cache` test isolation issue
+
+## Roadmap
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Project structure, settings, middleware, health endpoint | ✅ Done |
+| 2 | Mock LLM client, document upload, PDF extraction, 46 tests | ✅ Done |
+| 3 | RAG pipeline — embed documents into Qdrant | ⏳ Pending |
+| 4 | SSE streaming chat endpoint | ⏳ Pending |
+| 5 | Postgres + Alembic replaces in-memory store | ⏳ Pending |
+| 6 | JWT authentication | ⏳ Pending |
