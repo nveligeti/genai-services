@@ -1,16 +1,20 @@
-# Project - DocuMind — RAG-powered document intelligence service
+# DocuMind
 
-TECH STACK:
+RAG-powered document intelligence service.
+
+## Tech Stack
+
+- Python 3.x
 - FastAPI 0.111.1
 - Pydantic 2.7.4
 - pydantic-settings 2.3.4
-- Python 3.x
 - Mock LLM (no real API key)
 - Git Bash on Windows
-- Virtual env at .venv/Scripts/activate
+- Virtual env at `.venv/Scripts/activate`
 
+## Project Structure
 
-STRUCTURE:
+```
 documind/
 ├── app/
 │   ├── main.py
@@ -18,7 +22,7 @@ documind/
 │   ├── exceptions.py
 │   ├── middleware.py
 │   ├── modules/health/router.py
-│   └── providers/llm.py (empty — Phase 2)
+│   └── providers/llm.py        # empty — Phase 2
 ├── tests/
 │   ├── conftest.py
 │   ├── unit/test_settings.py
@@ -26,31 +30,46 @@ documind/
 ├── requirements.txt
 ├── requirements-dev.txt
 └── pytest.ini
+```
 
-TEST STATUS: 17 passed ✅
+## Getting Started
 
+Install dependencies:
 
-# genai-services dependencies
+```bash
 pip install -r requirements-dev.txt
-# Check all key packages are present
-pip show fastapi pydantic pydantic-settings loguru pytest | grep -E "Name|Version"
+```
 
+Verify key packages:
+
+```bash
+pip show fastapi pydantic pydantic-settings loguru pytest | grep -E "Name|Version"
+```
+
+Run tests:
+
+```bash
 pytest tests/ -v
-git config  core.autocrlf input
-git add  setup.sh documind/
+```
+
+## Git Setup
+
+```bash
+git config core.autocrlf input
+git add setup.sh documind/
 git commit -m "Phase 1 of the project"
 git push origin main
+```
 
-COMPLETED:
-- Phase 1: Project structure, settings, middleware,
-  health endpoint, exception handlers, 17 passing tests
+## Status
 
-KEY FIXES APPLIED:
-- Pinned pydantic-settings==2.3.4 (no Rust needed)
-- Monkey-patched get_settings in conftest.py
-  to fix lru_cache test isolation issue
+**Tests:** 17 passed ✅
 
-NEXT: Phase 2 — Mock LLM client + document upload endpoint
-      Chapters 3, 4, 5 applied
+**Completed — Phase 1:** Project structure, settings, middleware, health endpoint, exception handlers.
 
-      
+**Up next — Phase 2:** Mock LLM client + document upload endpoint (Chapters 3, 4, 5).
+
+## Key Fixes
+
+- Pinned `pydantic-settings==2.3.4` (no Rust needed)
+- Monkey-patched `get_settings` in `conftest.py` to fix `lru_cache` test isolation issue
