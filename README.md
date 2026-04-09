@@ -105,3 +105,18 @@ Phase 4 delivers:
 
 Phase 4 connects Chapters 6, 5, and 10 — real-time streaming responses that combine RAG context with the Mock LLM using Server-Sent Events.
 
+monkeypatch.setattr patches the module-level name
+but FastAPI's DI system holds a reference to the
+original function object — not the module name.
+
+dependency_overrides[get_rag_pipeline] patches
+the exact function object FastAPI uses internally.
+
+monkeypatch:          module.get_rag_pipeline = mock
+                      FastAPI still calls original ❌
+
+dependency_overrides: FastAPI.di[get_rag_pipeline] = mock
+                      FastAPI calls mock ✅
+
+Chapter 11 lesson: Always use app.dependency_overrides to mock FastAPI dependencies — never monkeypatch. FastAPI's DI system resolves dependencies by function object identity, not by module name. monkeypatch replaces the name in the module namespace but FastAPI already captured the original reference.
+

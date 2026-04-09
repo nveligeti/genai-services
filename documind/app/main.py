@@ -45,6 +45,7 @@ def create_app() -> FastAPI:
     from app.modules.health.router import router as health_router
     from app.modules.documents.router import router as documents_router  # NEW
     from app.modules.rag.router import router as rag_router 
+    from app.modules.chat.router import router as chat_router
 
     settings = get_settings()
 
@@ -61,7 +62,9 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     app.include_router(health_router)
     app.include_router(documents_router)   # NEW
-    app.include_router(rag_router)  
+    app.include_router(rag_router) 
+    app.include_router(chat_router) 
+    
     return app
 
 
