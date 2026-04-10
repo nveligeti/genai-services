@@ -24,3 +24,12 @@ qdrant-client==1.11.1
 
 # Embeddings (Phase 3)
 sentence-transformers==3.1.1
+
+# requirements.txt — add these lines
+
+# Database (Phase 5)
+sqlalchemy[asyncio]==2.0.35
+alembic==1.13.3
+psycopg[binary]==3.2.10
+aiosqlite==0.20.0
+

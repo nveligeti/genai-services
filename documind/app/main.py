@@ -1,6 +1,4 @@
-# app/main.py
-# Chapter 2: Application factory pattern + onion architecture
-# Chapter 5: Lifespan for async startup/shutdown
+# app/main.py — replace entire file
 
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
@@ -10,8 +8,8 @@ from loguru import logger
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    # Import here — NOT at module level
     from app.settings import get_settings
+    from app.core.database import init_engine, dispose_engine
     settings = get_settings()
 
     logger.info(
@@ -19,7 +17,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         f"[{settings.environment}]"
     )
 
-    # ── Phase 3: Qdrant collection setup ────────────────────────
+    if settings.environment != "testing":
+        init_engine(settings.database_url)
+
     if settings.environment != "testing":
         try:
             from app.modules.rag.repository import VectorRepository
@@ -34,18 +34,28 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             logger.warning(f"Qdrant not available: {e}")
 
     yield
+
+    if settings.environment != "testing":
+        await dispose_engine()
+
     logger.info(f"Shutting down {settings.app_name}")
 
 
 def create_app() -> FastAPI:
-    # Import here — NOT at module level
+    # All imports INSIDE function — prevents module-level
+    # caching before test overrides are registered
     from app.settings import get_settings
     from app.exceptions import register_exception_handlers
     from app.middleware import register_middleware
     from app.modules.health.router import router as health_router
-    from app.modules.documents.router import router as documents_router  # NEW
-    from app.modules.rag.router import router as rag_router 
+    from app.modules.documents.router import (
+        router as documents_router
+    )
+    from app.modules.rag.router import router as rag_router
     from app.modules.chat.router import router as chat_router
+    from app.modules.conversations.router import (
+        router as conversations_router
+    )
 
     settings = get_settings()
 
@@ -60,12 +70,21 @@ def create_app() -> FastAPI:
 
     register_middleware(app)
     register_exception_handlers(app)
+
     app.include_router(health_router)
-    app.include_router(documents_router)   # NEW
-    app.include_router(rag_router) 
-    app.include_router(chat_router) 
-    
+    app.include_router(documents_router)
+    app.include_router(rag_router)
+    app.include_router(chat_router)
+    app.include_router(conversations_router)
+
     return app
 
 
-app = create_app()
+# ── IMPORTANT ─────────────────────────────────────────────────────
+# Do NOT call create_app() here at module level.
+# uvicorn needs it so we use a factory string instead:
+# uvicorn app.main:create_app --factory --reload
+#
+# For direct import compatibility we expose app lazily:
+def get_app() -> FastAPI:
+    return create_app()

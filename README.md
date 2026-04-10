@@ -21,12 +21,21 @@ documind/
 │   ├── settings.py
 │   ├── exceptions.py
 │   ├── middleware.py
-│   ├── modules/health/router.py
-│   └── providers/llm.py        # empty — Phase 2
+│   ├── core/           # SQLAlchemy engine + session
+│   ├── modules/
+│   │   ├── health/
+│   │   ├── documents/
+│   │   ├── rag/
+│   │   ├── chat/
+│   │   └── conversations/
+│   └── providers/
+│       └── llm.py
 ├── tests/
 │   ├── conftest.py
-│   ├── unit/test_settings.py
-│   └── e2e/test_health.py
+│   ├── unit/
+│   ├── integration/
+│   └── e2e/
+├── alembic/
 ├── requirements.txt
 ├── requirements-dev.txt
 └── pytest.ini
@@ -40,12 +49,6 @@ Install dependencies:
 pip install -r requirements-dev.txt
 ```
 
-Verify key packages:
-
-```bash
-pip show fastapi pydantic pydantic-settings loguru pytest | grep -E "Name|Version"
-```
-
 Run tests:
 
 ```bash
@@ -56,67 +59,46 @@ pytest tests/ -v
 
 ```bash
 git config core.autocrlf input
-git add setup.sh documind/
-git commit -m "Phase 1 of the project"
-git push origin main
 ```
-
-## Status
-
-**Tests:** 46 passed ✅
-
-## Key Fixes
-
-- Pinned `pydantic-settings==2.3.4` (no Rust needed)
-- Monkey-patched `get_settings` in `conftest.py` to fix `lru_cache` test isolation issue
 
 ## Roadmap
 
 | Phase | Description | Status |
 |-------|-------------|--------|
 | 1 | Project structure, settings, middleware, health endpoint | ✅ Done |
-| 2 | Mock LLM client, document upload, PDF extraction, 46 tests | ✅ Done |
-| 3 | RAG pipeline — embed documents into Qdrant | ⏳ Pending |
-| 4 | SSE streaming chat endpoint | ⏳ Pending |
-| 5 | Postgres + Alembic replaces in-memory store | ⏳ Pending |
+| 2 | Mock LLM client, document upload, PDF extraction | ✅ Done |
+| 3 | RAG pipeline — Qdrant vector store, semantic search | ✅ Done |
+| 4 | SSE streaming chat endpoint, RAG-augmented prompts | ✅ Done |
+| 5 | Postgres + Alembic, persistent conversation history | ✅ Done |
 | 6 | JWT authentication | ⏳ Pending |
 
+## Key Notes
 
-Phase 3 delivers:
-─────────────────────────────────────────────────────
-✅ Qdrant vector database setup (Chapter 5)
-✅ Text chunking + embedding pipeline (Chapter 5)
-✅ Vector repository pattern (Chapter 7)
-✅ RAG service — store + retrieve (Chapter 5)
-✅ Query endpoint (Chapter 2)
-✅ Semantic search with cosine similarity (Chapter 5)
-✅ Unit + integration + E2E tests (Chapter 11)
+### FastAPI dependency overrides
 
-Phase 3 connects Chapters 5 and 7 — building the vector database pipeline that lets users query their uploaded documents semantically.
+Always use `app.dependency_overrides` to mock FastAPI dependencies — never `monkeypatch`. FastAPI resolves dependencies by function object identity, not module name.
 
-Phase 4 delivers:
-─────────────────────────────────────────────────────
-✅ SSE streaming chat endpoint (Chapter 6)
-✅ RAG-augmented prompt builder (Chapter 10)
-✅ Chat schemas with conversation history (Chapter 4)
-✅ Async stream generator (Chapter 5)
-✅ DONE sentinel + error handling (Chapter 6)
-✅ Unit + integration + E2E tests (Chapter 11)
+```python
+# Wrong — FastAPI still calls the original
+monkeypatch.setattr("module.get_rag_pipeline", mock)
 
-Phase 4 connects Chapters 6, 5, and 10 — real-time streaming responses that combine RAG context with the Mock LLM using Server-Sent Events.
+# Correct — patches the exact reference FastAPI holds
+app.dependency_overrides[get_rag_pipeline] = lambda: mock
+```
 
-monkeypatch.setattr patches the module-level name
-but FastAPI's DI system holds a reference to the
-original function object — not the module name.
+### App factory pattern
 
-dependency_overrides[get_rag_pipeline] patches
-the exact function object FastAPI uses internally.
+`create_app()` must be called on demand, not at module level. Module-level code runs at import time — before test fixtures can override dependencies. The factory pattern gives tests full control over the environment before the app is instantiated.
 
-monkeypatch:          module.get_rag_pipeline = mock
-                      FastAPI still calls original ❌
+### Windows + psycopg event loop
 
-dependency_overrides: FastAPI.di[get_rag_pipeline] = mock
-                      FastAPI calls mock ✅
+Windows defaults to `ProactorEventLoop` (Python 3.8+), but psycopg's async driver requires `SelectorEventLoop`. Fix:
 
-Chapter 11 lesson: Always use app.dependency_overrides to mock FastAPI dependencies — never monkeypatch. FastAPI's DI system resolves dependencies by function object identity, not by module name. monkeypatch replaces the name in the module namespace but FastAPI already captured the original reference.
+```python
+asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+```
 
+### Known fixes
+
+- Pinned `pydantic-settings==2.3.4` (no Rust needed)
+- Monkey-patched `get_settings` in `conftest.py` to fix `lru_cache` test isolation
