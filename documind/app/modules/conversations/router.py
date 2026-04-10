@@ -1,40 +1,30 @@
-# app/modules/conversations/router.py
-# Chapter 2: CRUD endpoints for conversations
+# app/modules/conversations/router.py — replace entire file
 
+import json
 from fastapi import APIRouter
 from app.core.database import DBSessionDep
 from app.exceptions import NotFoundException
-from app.modules.conversations.repository import (
-    ConversationRepository,
-)
+from app.modules.auth.dependencies import AdminUserDep, CurrentUserDep
+from app.modules.conversations.repository import ConversationRepository
 from app.modules.conversations.schemas import (
     ConversationCreate,
     ConversationDetailOut,
     ConversationListResponse,
     ConversationOut,
-    MessageOut,
-)
-import json
-
-router = APIRouter(
-    prefix="/conversations",
-    tags=["Conversations"],
 )
 
+router = APIRouter(prefix="/conversations", tags=["Conversations"])
 
-@router.post(
-    "",
-    response_model=ConversationOut,
-    status_code=201,
-)
+
+@router.post("", response_model=ConversationOut, status_code=201)
 async def create_conversation_controller(
     body: ConversationCreate,
     session: DBSessionDep,
+    current_user: CurrentUserDep,        # ← protected
 ) -> ConversationOut:
-    """Create a new conversation."""
     repo = ConversationRepository(session)
     entity = await repo.create_conversation(body.title)
-    await session.commit()   
+    await session.commit()
     return ConversationOut(
         id=entity.id,
         title=entity.title,
@@ -45,16 +35,13 @@ async def create_conversation_controller(
     )
 
 
-@router.get(
-    "",
-    response_model=ConversationListResponse,
-)
+@router.get("", response_model=ConversationListResponse)
 async def list_conversations_controller(
     session: DBSessionDep,
+    current_user: CurrentUserDep,        # ← protected
     skip: int = 0,
     take: int = 20,
 ) -> ConversationListResponse:
-    """List all conversations paginated."""
     repo = ConversationRepository(session)
     entities = await repo.list_conversations(skip, take)
     conversations = [
@@ -64,8 +51,7 @@ async def list_conversations_controller(
             created_at=e.created_at,
             updated_at=e.updated_at,
             is_active=e.is_active,
-            message_count=len(e.messages)
-            if hasattr(e, "messages") else 0,
+            message_count=len(e.messages),
         )
         for e in entities
     ]
@@ -84,13 +70,14 @@ async def list_conversations_controller(
 async def get_conversation_controller(
     conversation_id: str,
     session: DBSessionDep,
+    current_user: CurrentUserDep,        # ← protected
 ) -> ConversationDetailOut:
-    """Get conversation with full message history."""
     repo = ConversationRepository(session)
     entity = await repo.get_conversation(conversation_id)
     if not entity:
         raise NotFoundException("Conversation", conversation_id)
 
+    from app.modules.conversations.schemas import MessageOut
     messages = [
         MessageOut(
             id=m.id,
@@ -103,7 +90,6 @@ async def get_conversation_controller(
         )
         for m in entity.messages
     ]
-
     return ConversationDetailOut(
         id=entity.id,
         title=entity.title,
@@ -115,17 +101,12 @@ async def get_conversation_controller(
     )
 
 
-@router.delete(
-    "/{conversation_id}",
-    status_code=204,
-)
+@router.delete("/{conversation_id}", status_code=204)
 async def delete_conversation_controller(
     conversation_id: str,
     session: DBSessionDep,
+    current_user: AdminUserDep,          # ← ADMIN only
 ) -> None:
-    """Delete a conversation and all its messages."""
     repo = ConversationRepository(session)
-    deleted = await repo.delete_conversation(conversation_id)
-    if not deleted:
-        raise NotFoundException("Conversation", conversation_id)
-    await session.commit()  
+    await repo.delete_conversation(conversation_id)
+    await session.commit()

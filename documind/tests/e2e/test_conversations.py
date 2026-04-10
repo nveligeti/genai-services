@@ -8,21 +8,45 @@ from app.core.database import get_db_session
 
 
 # tests/e2e/test_conversations.py — update override fixture
-
 @pytest.fixture(autouse=True)
-def override_db(app, db_session):
-    """
-    Override DB session for E2E conversation tests.
-    Uses autoflush session so router commits work correctly.
-    """
-    from app.core.database import get_db_session
+def auth(app):
+    """Bypass auth for conversation tests."""
+    from app.modules.auth.dependencies import (
+        get_current_user,
+        get_admin_user,
+    )
+    from app.modules.auth.schemas import AuthenticatedUser
 
-    async def override():
-        yield db_session
-
-    app.dependency_overrides[get_db_session] = override
+    mock_user = AuthenticatedUser(
+        user_id="test-user-id",
+        email="test@example.com",
+        role="ADMIN",      # ADMIN so delete works too
+        token_id="test-token-id",
+    )
+    app.dependency_overrides[get_current_user] = (
+        lambda: mock_user
+    )
+    app.dependency_overrides[get_admin_user] = (
+        lambda: mock_user
+    )
     yield
-    app.dependency_overrides.pop(get_db_session, None)
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_admin_user, None)
+    
+# @pytest.fixture(autouse=True)
+# def override_db(app, db_session):
+#     """
+#     Override DB session for E2E conversation tests.
+#     Uses autoflush session so router commits work correctly.
+#     """
+#     from app.core.database import get_db_session
+
+#     async def override():
+#         yield db_session
+
+#     app.dependency_overrides[get_db_session] = override
+#     yield
+#     app.dependency_overrides.pop(get_db_session, None)
 
 
 class TestConversationEndpoints:

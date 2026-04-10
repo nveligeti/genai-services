@@ -6,6 +6,26 @@ import pytest
 import asyncio
 from fastapi.testclient import TestClient
 
+@pytest.fixture(autouse=True)
+def auth(client, registered_user, auth_headers, app):
+    """
+    Auto-inject auth for all document tests.
+    Bypasses CurrentUserDep for existing tests.
+    """
+    from app.modules.auth.dependencies import get_current_user
+    from app.modules.auth.schemas import AuthenticatedUser
+
+    mock_user = AuthenticatedUser(
+        user_id="test-user-id",
+        email="test@example.com",
+        role="USER",
+        token_id="test-token-id",
+    )
+    app.dependency_overrides[get_current_user] = (
+        lambda: mock_user
+    )
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
 
 class TestDocumentUploadEndpoint:
 

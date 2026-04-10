@@ -5,6 +5,7 @@
 from typing import Annotated, AsyncGenerator
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from app.modules.auth.dependencies import CurrentUserDep
 from app.modules.chat.schemas import ChatRequest, ChatResponse
 from app.modules.chat.service import ChatService
 from app.modules.rag.pipeline import RAGPipeline
@@ -62,6 +63,7 @@ ChatServiceDep = Annotated[
 async def chat_stream_controller(
     request: ChatRequest,
     service: ChatServiceDep,
+    current_user: CurrentUserDep,
 ) -> StreamingResponse:
     """
     Stream LLM response token by token via SSE.
@@ -96,6 +98,7 @@ async def chat_stream_controller(
 async def chat_controller(
     request: ChatRequest,
     service: ChatServiceDep,
+     current_user: CurrentUserDep,        # ← protected
 ) -> ChatResponse:
     """
     Non-streaming chat endpoint.

@@ -92,3 +92,16 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 
 # Annotated dependency for clean injection
 DBSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
+
+# app/core/database.py — add entities import at bottom
+# so Base.metadata includes all tables
+
+# Add this at the very end of database.py:
+
+def import_all_entities() -> None:
+    """
+    Import all entities to register them with Base.metadata.
+    Called before create_all() in tests and migrations.
+    """
+    from app.core import entities          # noqa: F401
+    from app.modules.auth import entities  # noqa: F401

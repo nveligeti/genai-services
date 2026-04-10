@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from app.main import create_app
 from app.settings import Settings, get_settings
 from app.core.database import Base, get_db_session
 import app.modules.documents.service as doc_svc_module
@@ -34,11 +33,10 @@ def test_settings() -> Settings:
 
 @pytest_asyncio.fixture(scope="session")
 async def test_engine(test_settings):
-    """
-    Single in-memory SQLite engine for entire test session.
-    Drop all first to ensure clean state regardless of
-    how many times metadata has been imported.
-    """
+    """Single in-memory SQLite engine for entire test session."""
+    from app.core import entities           # noqa: F401
+    from app.modules.auth import entities   # noqa: F401
+
     engine = create_async_engine(
         TEST_DATABASE_URL,
         echo=False,
@@ -46,9 +44,7 @@ async def test_engine(test_settings):
     )
 
     async with engine.begin() as conn:
-        # Drop ALL first — ensures no leftover state
         await conn.run_sync(Base.metadata.drop_all)
-        # Then create fresh
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
@@ -59,57 +55,73 @@ async def test_engine(test_settings):
     await engine.dispose()
 
 
-@pytest_asyncio.fixture(scope="function")
-async def db_session(test_engine) -> AsyncSession:
+@pytest_asyncio.fixture(scope="session")
+async def session_factory(test_engine):
     """
-    Function-scoped session with rollback after each test.
-    Chapter 11: complete isolation between tests.
+    Session-scoped factory shared across all tests.
+    Used to supply sessions to the FastAPI DI override.
     """
-    factory = async_sessionmaker(
+    return async_sessionmaker(
         bind=test_engine,
         class_=AsyncSession,
         autocommit=False,
         autoflush=False,
         expire_on_commit=False,
     )
-    async with factory() as session:
+
+
+@pytest_asyncio.fixture(scope="function")
+async def db_session(session_factory) -> AsyncSession:
+    """
+    Function-scoped session with rollback after each test.
+    Chapter 11: complete isolation between tests.
+    """
+    async with session_factory() as session:
         yield session
         await session.rollback()
 
 
 # ── App + Client ──────────────────────────────────────────────────
 
-# tests/conftest.py — update app fixture only
-
-# tests/conftest.py — replace app fixture only
-
 @pytest.fixture(scope="session")
-def app(test_settings, test_engine):
+def app(test_settings, test_engine, session_factory):
     """
-    Patch settings before create_app() is ever called.
-    This is the only reliable way to override lru_cache.
+    Test application with all dependency overrides.
+    Overrides get_db_session globally so ALL tests
+    use the test SQLite engine — never calls init_engine().
     """
     import app.settings as settings_module
     from app.settings import get_settings as original_gs
-
-    # Step 1 — clear any cached value
     original_gs.cache_clear()
 
-    # Step 2 — replace the function itself before create_app
+    # Patch settings before create_app
     settings_module.get_settings = lambda: test_settings
 
-    # Step 3 — NOW create the app (sees test settings)
     from app.main import create_app as _create_app
     application = _create_app()
 
-    # Step 4 — also override FastAPI DI for route handlers
+    # Override settings dependency
     application.dependency_overrides[original_gs] = (
         lambda: test_settings
     )
 
+    # ── Override DB session globally ──────────────────────────────
+    # This is the key fix — replaces get_db_session for ALL routes
+    # so no route ever calls init_engine() during tests
+    async def override_db_session():
+        async with session_factory() as session:
+            try:
+                yield session
+            except Exception:
+                await session.rollback()
+                raise
+
+    application.dependency_overrides[get_db_session] = (
+        override_db_session
+    )
+
     yield application
 
-    # Step 5 — restore original
     settings_module.get_settings = original_gs
     original_gs.cache_clear()
 
@@ -119,26 +131,7 @@ def client(app) -> TestClient:
     with TestClient(app) as c:
         yield c
 
-# tests/conftest.py — add this fixture
 
-@pytest_asyncio.fixture(scope="function")
-async def db_session_commit(test_engine) -> AsyncSession:
-    """
-    Function-scoped session that COMMITS.
-    Used for E2E tests where router commits transactions.
-    Cleans up after itself by deleting all rows.
-    """
-    factory = async_sessionmaker(
-        bind=test_engine,
-        class_=AsyncSession,
-        autocommit=False,
-        autoflush=False,
-        expire_on_commit=False,
-    )
-    async with factory() as session:
-        yield session
-        # Clean up all tables after test
-        await session.rollback()
 # ── Cleanup ───────────────────────────────────────────────────────
 
 @pytest.fixture(autouse=True)
@@ -147,3 +140,44 @@ def clear_document_store():
     doc_svc_module._document_store.clear()
     yield
     doc_svc_module._document_store.clear()
+
+
+# ── Auth helpers ──────────────────────────────────────────────────
+
+@pytest.fixture
+def registered_user(client: TestClient) -> dict:
+    """Register a fresh test user per test."""
+    import uuid
+    # Use unique email per test to avoid duplicate conflicts
+    unique_email = f"test_{uuid.uuid4().hex[:8]}@example.com"
+    response = client.post(
+        "/auth/register",
+        json={
+            "email": unique_email,
+            "password": "securepassword123",
+        },
+    )
+    return {
+        "email": unique_email,
+        "password": "securepassword123",
+        "user": response.json(),
+    }
+
+
+@pytest.fixture
+def auth_token(client: TestClient, registered_user) -> str:
+    """Login and return bearer token."""
+    response = client.post(
+        "/auth/login",
+        json={
+            "email": registered_user["email"],
+            "password": registered_user["password"],
+        },
+    )
+    return response.json()["access_token"]
+
+
+@pytest.fixture
+def auth_headers(auth_token: str) -> dict:
+    """Authorization headers for protected requests."""
+    return {"Authorization": f"Bearer {auth_token}"}

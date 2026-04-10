@@ -56,7 +56,9 @@ def create_app() -> FastAPI:
     from app.modules.conversations.router import (
         router as conversations_router
     )
-
+    from app.modules.auth.router import (    # NEW
+        router as auth_router
+    )
     settings = get_settings()
 
     app = FastAPI(
@@ -72,6 +74,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
 
     app.include_router(health_router)
+    app.include_router(auth_router)  
     app.include_router(documents_router)
     app.include_router(rag_router)
     app.include_router(chat_router)

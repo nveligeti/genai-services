@@ -5,7 +5,24 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
 
+@pytest.fixture(autouse=True)
+def auth(app):
+    """Bypass auth for RAG tests."""
+    from app.modules.auth.dependencies import get_current_user
+    from app.modules.auth.schemas import AuthenticatedUser
 
+    mock_user = AuthenticatedUser(
+        user_id="test-user-id",
+        email="test@example.com",
+        role="USER",
+        token_id="test-token-id",
+    )
+    app.dependency_overrides[get_current_user] = (
+        lambda: mock_user
+    )
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
+    
 class TestRAGQueryEndpoint:
 
     def test_query_endpoint_exists(self, client: TestClient):

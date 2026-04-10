@@ -33,3 +33,6 @@ alembic==1.13.3
 psycopg[binary]==3.2.10
 aiosqlite==0.20.0
 
+# Auth (Phase 6) — replace passlib with bcrypt directly
+bcrypt==4.0.1
+python-jose[cryptography]==3.3.0
