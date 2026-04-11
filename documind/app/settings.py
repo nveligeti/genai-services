@@ -56,6 +56,22 @@ class Settings(BaseSettings):
     # Redis (Phase 7)
     redis_url: str = "redis://localhost:6379"
 
+    # app/settings.py — add inside Settings class
+
+    # Cache settings (Phase 8)
+    cache_enabled: bool = True
+    keyword_cache_ttl: int = 3600
+    semantic_cache_ttl: int = 7200
+    semantic_cache_threshold: float = Field(
+        default=0.92, ge=0.0, le=1.0
+    )
+    semantic_cache_max_entries: int = 1000
+    cache_collection_name: str = "documind_cache"
+
+    # Prompt settings (Phase 8)
+    max_context_tokens: int = 3000
+    max_response_tokens: int = 500
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
@@ -68,3 +84,5 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+

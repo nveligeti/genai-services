@@ -1,0 +1,48 @@
+# .dockerignore
+# Keep build context lean — Chapter 12
+
+# Python
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.Python
+**/.venv
+**/venv
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/*.egg-info
+
+# Testing
+tests/
+coverage/
+.coverage
+htmlcov/
+
+# Version control
+.git
+.gitignore
+
+# Environment — NEVER in image
+.env
+*.env.local
+
+# Development artifacts
+uploads/
+qdrant_storage/
+alembic/versions/*.py
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs
+*.md
+LICENSE

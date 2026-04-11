@@ -1126,3 +1126,514 @@ VISIBLE  — token tracking shows exact costs per request
 # Run just this test with full output
 pytest tests/e2e/test_auth.py::TestLogout::test_rbac_admin_endpoint -v --tb=long
 
+Chapter 11 lesson: Always use dynamically generated IDs (like uuid.uuid4().hex) in boundary tests for nonexistent resources. Static strings like "nonexistent-id" can accidentally match real records if test isolation isn't perfect, making the test pass for the wrong reason.
+
+## Phase 9: Docker + Docker Compose
+
+Phase 9 is the **final phase** — packaging everything we built across Phases 1-8 into containers that run identically on any machine.
+
+---
+
+### The Core Goal
+
+```
+Right now DocuMind runs only on YOUR machine because:
+  - Python 3.11.9 installed locally
+  - .venv with specific package versions
+  - Postgres running somewhere
+  - Qdrant running somewhere
+  - Redis running somewhere
+
+After Phase 9:
+  docker compose up
+  → Everything starts automatically
+  → Works on any machine with Docker
+  → Production-ready deployment
+```
+
+---
+
+### What We Build
+
+```
+Phase 9 delivers:
+─────────────────────────────────────────────────────
+✅ Dockerfile — multi-stage production image
+✅ .dockerignore — keep image lean
+✅ docker-compose.yml — all 5 services
+✅ Health checks for every container
+✅ Non-root user for security
+✅ Environment-based configuration
+✅ Volume persistence for all data
+✅ Container networking
+✅ Alembic migration on startup
+✅ Optimized layer caching
+```
+
+---
+
+### The Five Services
+
+```
+docker-compose.yml defines:
+
+┌─────────────────────────────────────────────────┐
+│                  DocuMind Stack                  │
+│                                                  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
+│  │   app    │  │ postgres │  │    qdrant    │  │
+│  │ FastAPI  │  │ database │  │ vector store │  │
+│  │ :8000    │  │ :5432    │  │ :6333/:6334  │  │
+│  └────┬─────┘  └────┬─────┘  └──────┬───────┘  │
+│       │             │               │           │
+│  ┌────┴─────┐  ┌────┴─────┐         │           │
+│  │  redis   │  │ migrate  │         │           │
+│  │  cache   │  │ (one-off)│         │           │
+│  │ :6379    │  │ alembic  │         │           │
+│  └──────────┘  └──────────┘         │           │
+└─────────────────────────────────────────────────┘
+
+All services on the same bridge network: documind-net
+```
+
+---
+
+### Service 1: app (FastAPI)
+
+The main DocuMind application:
+
+```dockerfile
+# What it does:
+- Builds from our Dockerfile
+- Waits for postgres + redis + qdrant to be healthy
+- Runs: uvicorn app.main:create_app --factory
+- Exposes port 8000
+- Mounts uploads volume for document storage
+- Gets all config from environment variables
+```
+
+```yaml
+app:
+  build: .
+  ports:
+    - "8000:8000"
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    qdrant:
+      condition: service_healthy
+  environment:
+    DATABASE_URL: postgresql+psycopg://...
+    REDIS_URL: redis://redis:6379
+    QDRANT_HOST: qdrant
+```
+
+---
+
+### Service 2: postgres
+
+Stores users, tokens, conversations, messages:
+
+```yaml
+postgres:
+  image: postgres:15-alpine   # lightweight Alpine version
+  environment:
+    POSTGRES_USER: documind
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    POSTGRES_DB: documind
+  volumes:
+    - postgres_data:/var/lib/postgresql/data
+  healthcheck:
+    test: ["CMD", "pg_isready", "-U", "documind"]
+    interval: 5s
+    retries: 5
+```
+
+Why Alpine? Smaller image, faster pull, same functionality.
+
+Why volume? Database survives `docker compose down` and restarts.
+
+---
+
+### Service 3: qdrant
+
+Stores document vectors and semantic cache:
+
+```yaml
+qdrant:
+  image: qdrant/qdrant:latest
+  ports:
+    - "6333:6333"   # REST API
+    - "6334:6334"   # gRPC
+  volumes:
+    - qdrant_data:/qdrant/storage
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+```
+
+Two ports because:
+- 6333: HTTP REST API (what we use)
+- 6334: gRPC (faster for high-volume production)
+
+---
+
+### Service 4: redis
+
+Stores keyword cache and rate limit counters:
+
+```yaml
+redis:
+  image: redis:7-alpine
+  command: redis-server --save 60 1  # persist every 60s
+  volumes:
+    - redis_data:/data
+  healthcheck:
+    test: ["CMD", "redis-cli", "ping"]
+```
+
+The `--save 60 1` flag means Redis persists data to disk every 60 seconds if at least 1 key changed. Without this, cache is lost on restart.
+
+---
+
+### Service 5: migrate (one-off container)
+
+Runs Alembic migrations before the app starts:
+
+```yaml
+migrate:
+  build: .
+  command: python -m alembic upgrade head
+  depends_on:
+    postgres:
+      condition: service_healthy
+  environment:
+    DATABASE_URL: postgresql+psycopg://...
+```
+
+Why a separate service? Because:
+- Migrations must run BEFORE app starts
+- Migrations should run ONCE not repeatedly
+- Separates concerns cleanly
+
+---
+
+### The Dockerfile — Multi-Stage Build
+
+Chapter 12 shows multi-stage builds reduce image size from 1.4GB to 34MB. Our Dockerfile uses three stages:
+
+```
+Stage 1: base
+  FROM python:3.11-slim
+  Install system dependencies
+  Create virtual environment
+  Install Python packages
+
+Stage 2: development
+  FROM base
+  Install dev dependencies (pytest, etc.)
+  Mount source code
+  Run with --reload
+
+Stage 3: production
+  FROM base (NOT development)
+  Copy ONLY what's needed
+  Create non-root user
+  Run without --reload
+  Final image is lean
+```
+
+```
+Without multi-stage:
+  base + dev deps + test files = 1.4GB ❌
+
+With multi-stage:
+  Only production stage shipped = ~200MB ✅
+  Dev deps never reach production image
+```
+
+---
+
+### Layer Ordering Strategy
+
+Chapter 12 emphasizes layer order matters for caching:
+
+```dockerfile
+# WRONG ORDER — code change rebuilds pip install
+COPY . .                        # changes every commit
+RUN pip install requirements    # re-runs every commit ❌
+
+# CORRECT ORDER — pip install cached unless deps change
+COPY requirements.txt .         # rarely changes
+RUN pip install requirements    # cached ✅
+COPY . .                        # changes every commit
+```
+
+```
+Build time comparison:
+  Wrong order:   45 seconds every build
+  Correct order: 3 seconds (only COPY . . layer rebuilds)
+```
+
+---
+
+### Non-Root User — Security
+
+Chapter 12 warns: running as root means a container exploit = host root access.
+
+```dockerfile
+# Create non-root user
+RUN groupadd --gid 1001 fastapi \
+    && adduser --uid 1001 --gid 1001 \
+       --disabled-password fastapi
+
+# Switch before CMD
+USER fastapi
+
+CMD ["uvicorn", "app.main:create_app", "--factory"]
+```
+
+```
+If container is compromised:
+  With root:    attacker has root on host ❌
+  With fastapi: attacker has limited user ✅
+```
+
+---
+
+### .dockerignore — Keep Image Lean
+
+Without `.dockerignore`, COPY . . includes everything:
+
+```
+.venv/          # 500MB of packages — already installed!
+.git/           # version history — not needed
+tests/          # test files — not in production
+__pycache__/    # Python cache — rebuilt anyway
+*.pyc           # compiled files — rebuilt anyway
+.env            # secrets — NEVER in image!
+uploads/        # user files — use volume instead
+```
+
+With `.dockerignore`:
+```
+Image size: 1.4GB → 200MB   (7x smaller)
+Build time: 45s   → 8s      (5x faster)
+Security:   risky → safer   (.env excluded)
+```
+
+---
+
+### Environment Variables Strategy
+
+Three files for different environments:
+
+```
+.env                 ← local development (git ignored)
+.env.example         ← template (committed to git)
+docker-compose.yml   ← reads from .env automatically
+```
+
+```bash
+# .env.example shows what's needed
+POSTGRES_PASSWORD=changeme
+SECRET_KEY=your-32-char-secret-key
+ENVIRONMENT=development
+
+# docker-compose.yml uses them
+environment:
+  SECRET_KEY: ${SECRET_KEY}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+```
+
+---
+
+### Health Checks — Why They Matter
+
+Without health checks:
+
+```
+docker compose up
+→ postgres starts (takes 3 seconds to be ready)
+→ app starts immediately
+→ app tries to connect to postgres
+→ Connection refused ❌
+→ app crashes
+→ Docker restarts app
+→ Retry loop for 30 seconds
+```
+
+With health checks:
+
+```
+docker compose up
+→ postgres starts
+→ Docker polls: pg_isready? No... No... Yes! ✅
+→ app starts AFTER postgres is confirmed ready
+→ Connection succeeds immediately ✅
+```
+
+```yaml
+depends_on:
+  postgres:
+    condition: service_healthy   # waits for health check
+```
+
+---
+
+### Volume Architecture
+
+```
+Named volumes survive docker compose down:
+
+postgres_data  → /var/lib/postgresql/data
+  Contains: all database tables, users, conversations
+
+qdrant_data    → /qdrant/storage
+  Contains: document vectors, semantic cache
+
+redis_data     → /data
+  Contains: keyword cache, rate limit counters
+
+uploads_data   → /app/uploads
+  Contains: uploaded PDF files
+```
+
+```
+docker compose down        # stop containers
+docker compose up          # restart
+→ All data still there ✅
+
+docker compose down -v     # stop + delete volumes
+→ All data gone ❌ (use only for fresh start)
+```
+
+---
+
+### Container Networking
+
+All services communicate by **container name** not IP:
+
+```
+Inside docker network "documind-net":
+
+  app connects to postgres via: postgres:5432
+  app connects to redis via:    redis:6379
+  app connects to qdrant via:   qdrant:6333
+
+No hardcoded IPs needed.
+Docker's embedded DNS resolves container names.
+```
+
+```
+Outside docker (your browser/curl):
+  http://localhost:8000  → app
+  http://localhost:6333  → qdrant (if port exposed)
+  redis/postgres NOT exposed (security)
+```
+
+---
+
+### Windows-Specific Considerations
+
+Since you're on Windows with Git Bash:
+
+```
+1. Line endings:
+   Windows uses \r\n, Linux needs \n
+   Fix: add .gitattributes
+   * text=auto eol=lf
+
+2. Volume paths:
+   Windows: C:\Users\...
+   Docker:  /c/users/...
+   Fix: Docker Desktop handles this automatically
+
+3. ProactorEventLoop:
+   Windows Python uses ProactorEventLoop
+   psycopg needs SelectorEventLoop
+   Fix: already applied in Phase 5
+
+4. Docker Desktop:
+   Must be installed and running
+   Enable WSL2 backend for best performance
+```
+
+---
+
+### New Files Created in Phase 9
+
+```
+documind/
+├── Dockerfile               ← multi-stage build
+├── .dockerignore            ← exclude unnecessary files
+├── docker-compose.yml       ← all 5 services
+├── docker-compose.override.yml  ← local dev overrides
+├── .env.example             ← updated with Docker vars
+└── scripts/
+    └── start.sh             ← entrypoint with migrations
+```
+
+---
+
+### The Complete Startup Flow
+
+```
+docker compose up --build
+
+1. Build app image from Dockerfile        [~30 seconds]
+2. Pull postgres:15-alpine                [~10 seconds]
+3. Pull redis:7-alpine                    [~5 seconds]
+4. Pull qdrant/qdrant                     [~15 seconds]
+5. Start postgres → health check passes   [~5 seconds]
+6. Start redis → health check passes      [~2 seconds]
+7. Start qdrant → health check passes     [~3 seconds]
+8. Run migrate container                  [~3 seconds]
+9. Start app container                    [~2 seconds]
+10. App available at http://localhost:8000 ✅
+```
+
+---
+
+### Test Coverage in Phase 9
+
+```
+Phase 9 doesn't add unit tests — it adds:
+
+Integration verification:
+  ✅ docker compose up succeeds
+  ✅ health endpoint responds
+  ✅ database migrations applied
+  ✅ all services reachable
+
+Manual verification checklist:
+  ✅ POST /auth/register works
+  ✅ POST /auth/login returns token
+  ✅ POST /documents/upload works
+  ✅ POST /chat returns response
+  ✅ Data persists after docker compose down/up
+```
+
+---
+
+### Summary
+
+```
+Phase 9 takes DocuMind from:
+
+"Works on my machine"
+  → python -m uvicorn ... (manual)
+  → manage postgres manually
+  → manage redis manually
+  → manage qdrant manually
+
+To:
+
+"Works everywhere"
+  → docker compose up (one command)
+  → all services start automatically
+  → data persists between restarts
+  → ready for cloud deployment
+  → production security (non-root, no .env in image)
+```

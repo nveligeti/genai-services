@@ -4,6 +4,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from app.modules.auth.dependencies import CurrentUserDep
+from app.modules.cache.manager import (
+    CacheManager,
+    get_cache_manager,
+)
 from app.modules.chat.schemas import ChatRequest, ChatResponse
 from app.modules.chat.service import ChatService
 from app.modules.guardrails.pipeline import (
@@ -41,11 +45,16 @@ def get_chat_service(
         GuardrailPipeline,
         Depends(get_guardrail_pipeline),
     ],
+    cache_manager: Annotated[
+        CacheManager,
+        Depends(get_cache_manager),
+    ],
 ) -> ChatService:
     return ChatService(
         llm_client=get_llm_client(),
         rag_pipeline=rag_pipeline,
         guardrail_pipeline=guardrail_pipeline,
+        cache_manager=cache_manager,
     )
 
 
@@ -54,7 +63,10 @@ ChatServiceDep = Annotated[
 ]
 
 
-@router.post("/stream", response_class=StreamingResponse)
+@router.post(
+    "/stream",
+    response_class=StreamingResponse,
+)
 async def chat_stream_controller(
     request: Request,
     body: ChatRequest,
@@ -80,3 +92,28 @@ async def chat_controller(
     current_user: CurrentUserDep,
 ) -> ChatResponse:
     return await service.chat(body)
+
+
+@router.get(
+    "/cache/stats",
+    summary="Get cache hit statistics",
+)
+async def cache_stats_controller(
+    cache_manager: Annotated[
+        CacheManager,
+        Depends(get_cache_manager),
+    ],
+    current_user: CurrentUserDep,
+) -> dict:
+    """
+    Returns cache hit rate and counts.
+    Chapter 10: observability for cache performance.
+    """
+    stats = cache_manager.get_stats()
+    return {
+        "keyword_hits": stats.keyword_hits,
+        "semantic_hits": stats.semantic_hits,
+        "misses": stats.misses,
+        "total_requests": stats.total_requests,
+        "hit_rate": stats.hit_rate,
+    }

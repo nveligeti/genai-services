@@ -1,13 +1,15 @@
 # tests/unit/test_chat_service.py
 # Chapter 11: unit tests for ChatService
 
+# tests/unit/test_chat_service.py — replace import block at top
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
+from app.modules.chat.service import ChatService
 from app.modules.chat.schemas import ChatRequest, MessageRole
-from app.modules.chat.service import (
-    ChatService,
-    SYSTEM_PROMPT_WITH_RAG,
-    SYSTEM_PROMPT_WITHOUT_RAG,
+from app.modules.chat.prompt_builder import (
+    SYSTEM_PROMPT_WITH_CONTEXT as SYSTEM_PROMPT_WITH_RAG,
+    SYSTEM_PROMPT_WITHOUT_CONTEXT as SYSTEM_PROMPT_WITHOUT_RAG,
 )
 from app.providers.llm import MockLLMClient
 
