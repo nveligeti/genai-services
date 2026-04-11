@@ -8,20 +8,22 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
-# ── Windows Fix ───────────────────────────────────────────────────
-# psycopg async requires SelectorEventLoop on Windows.
-# Python 3.11 on Windows defaults to ProactorEventLoop.
+# ── Windows fix ───────────────────────────────────────────────
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(
         asyncio.WindowsSelectorEventLoopPolicy()
     )
 
-# Import all entities so Alembic can detect them
+# Import all entities so Alembic detects schema changes
 from app.core.database import Base
-from app.core.entities import (       # noqa: F401
+from app.core.entities import (              # noqa: F401
     DocumentEntity,
     ConversationEntity,
     MessageEntity,
+)
+from app.modules.auth.entities import (      # noqa: F401
+    UserEntity,
+    TokenEntity,
 )
 from app.settings import get_settings
 

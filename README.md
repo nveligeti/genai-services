@@ -1636,4 +1636,5 @@ To:
   → data persists between restarts
   → ready for cloud deployment
   → production security (non-root, no .env in image)
-```
+
+Root cause: Qdrant v1.7.4 uses a minimal Linux image that ships with bash but neither curl nor wget. Bash's /dev/tcp/host/port pseudo-device opens a raw TCP socket without any external tools — perfect for health checks in minimal containers. 
