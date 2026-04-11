@@ -148,12 +148,14 @@ class TestProtectedEndpoints:
         assert "email" in response.json()
 
 
+# tests/e2e/test_auth.py — find the test_rbac_admin_endpoint
+# and make sure it is INDENTED inside the TestLogout class
+
 class TestLogout:
 
     def test_logout_returns_204(
         self, client: TestClient, auth_headers
     ):
-        """Chapter 11: logout succeeds."""
         response = client.post(
             "/auth/logout", headers=auth_headers
         )
@@ -162,12 +164,6 @@ class TestLogout:
     def test_token_rejected_after_logout(
         self, client: TestClient, registered_user
     ):
-        """
-        E2E horizontal test — full logout flow.
-        Chapter 11: login → use → logout → rejected.
-        Chapter 8: token revocation verified end-to-end.
-        """
-        # Login fresh
         login = client.post(
             "/auth/login",
             json={
@@ -178,20 +174,18 @@ class TestLogout:
         token = login.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
-        # Verify works before logout
         before = client.get("/auth/me", headers=headers)
         assert before.status_code == 200
 
-        # Logout
         client.post("/auth/logout", headers=headers)
 
-        # Same token now rejected
         after = client.get("/auth/me", headers=headers)
         assert after.status_code == 401
 
+
     @pytest.mark.parametrize("role,expected_status", [
         ("USER",  403),
-        ("ADMIN", 204),
+        ("ADMIN", 404),
     ])
     def test_rbac_admin_endpoint(
         self,
@@ -201,13 +195,15 @@ class TestLogout:
     ):
         """
         Chapter 8: RBAC — USER vs ADMIN access.
-        Chapter 11: parametrize both role variants.
-        401 = not authenticated, 403 = not authorized.
+        USER  → 403 (authenticated but not authorized)
+        ADMIN → 404 (authorized but conversation not found)
         """
         import uuid
-        email = f"rbac_{role.lower()}_{uuid.uuid4().hex[:6]}@example.com"
+        email = (
+            f"rbac_{role.lower()}_{uuid.uuid4().hex[:6]}"
+            f"@example.com"
+        )
 
-        # Register with specific role
         client.post(
             "/auth/register",
             json={
@@ -217,7 +213,6 @@ class TestLogout:
             },
         )
 
-        # Login
         login = client.post(
             "/auth/login",
             json={"email": email, "password": "password123"},
@@ -225,10 +220,11 @@ class TestLogout:
         token = login.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
-        # Access admin-only endpoint
-        # DELETE /conversations requires ADMIN
+        # Use guaranteed nonexistent UUID
+        nonexistent_id = uuid.uuid4().hex
+
         response = client.delete(
-            "/conversations/any-id",
+            f"/conversations/{nonexistent_id}",
             headers=headers,
         )
         assert response.status_code == expected_status

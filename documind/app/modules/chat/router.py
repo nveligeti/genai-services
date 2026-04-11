@@ -1,13 +1,15 @@
-# app/modules/chat/router.py
-# Chapter 6: SSE streaming endpoint
-# Chapter 2: dependency injection
+# app/modules/chat/router.py — replace entire file
 
-from typing import Annotated, AsyncGenerator
-from fastapi import APIRouter, Depends
+from typing import Annotated
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from app.modules.auth.dependencies import CurrentUserDep
 from app.modules.chat.schemas import ChatRequest, ChatResponse
 from app.modules.chat.service import ChatService
+from app.modules.guardrails.pipeline import (
+    GuardrailPipeline,
+    get_guardrail_pipeline,
+)
 from app.modules.rag.pipeline import RAGPipeline
 from app.modules.rag.repository import VectorRepository
 from app.providers.embedder import get_embedder
@@ -18,7 +20,6 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
 def get_rag_pipeline() -> RAGPipeline:
-    """Chapter 2: DI factory — RAG pipeline for chat."""
     settings = get_settings()
     repository = VectorRepository(
         host=settings.qdrant_host,
@@ -36,11 +37,15 @@ def get_chat_service(
     rag_pipeline: Annotated[
         RAGPipeline, Depends(get_rag_pipeline)
     ],
+    guardrail_pipeline: Annotated[
+        GuardrailPipeline,
+        Depends(get_guardrail_pipeline),
+    ],
 ) -> ChatService:
-    """Chapter 2: DI factory — ChatService."""
     return ChatService(
         llm_client=get_llm_client(),
         rag_pipeline=rag_pipeline,
+        guardrail_pipeline=guardrail_pipeline,
     )
 
 
@@ -49,40 +54,17 @@ ChatServiceDep = Annotated[
 ]
 
 
-@router.post(
-    "/stream",
-    summary="Stream a chat response via SSE",
-    response_class=StreamingResponse,
-    responses={
-        200: {
-            "content": {"text/event-stream": {}},
-            "description": "SSE stream of chat tokens",
-        }
-    },
-)
+@router.post("/stream", response_class=StreamingResponse)
 async def chat_stream_controller(
-    request: ChatRequest,
+    request: Request,
+    body: ChatRequest,
     service: ChatServiceDep,
     current_user: CurrentUserDep,
 ) -> StreamingResponse:
-    """
-    Stream LLM response token by token via SSE.
-
-    Chapter 6: StreamingResponse with text/event-stream.
-    Chapter 5: async generator as data source.
-    Chapter 10: RAG context injected into prompt.
-
-    Event format:
-        data: {"type": "rag",   "content": "", "metadata": {...}}
-        data: {"type": "token", "content": "Hello", "metadata": {}}
-        data: {"type": "done",  "content": "", "metadata": {...}}
-        data: {"type": "error", "content": "...", "metadata": {}}
-    """
     return StreamingResponse(
-        service.chat_stream(request),
+        service.chat_stream(body),
         media_type="text/event-stream",
         headers={
-            # Prevent buffering in proxies/nginx
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
             "Connection": "keep-alive",
@@ -90,20 +72,11 @@ async def chat_stream_controller(
     )
 
 
-@router.post(
-    "",
-    response_model=ChatResponse,
-    summary="Non-streaming chat (for testing)",
-)
+@router.post("", response_model=ChatResponse)
 async def chat_controller(
-    request: ChatRequest,
+    request: Request,
+    body: ChatRequest,
     service: ChatServiceDep,
-     current_user: CurrentUserDep,        # ← protected
+    current_user: CurrentUserDep,
 ) -> ChatResponse:
-    """
-    Non-streaming chat endpoint.
-    Useful for testing and simple integrations
-    that don't support SSE.
-    Chapter 6: same service, different response format.
-    """
-    return await service.chat(request)
+    return await service.chat(body)

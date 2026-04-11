@@ -52,7 +52,44 @@ def mock_rag_pipeline(app):
     # Clean up override after each test
     app.dependency_overrides.pop(get_rag_pipeline, None)
 
+# tests/e2e/test_chat.py — add guardrail mock fixture
 
+@pytest.fixture(autouse=True)
+def mock_guardrails(app):
+    """
+    Bypass guardrails in chat E2E tests.
+    Tests chat behavior not guardrail behavior.
+    Chapter 11: test one concern at a time.
+    """
+    from app.modules.guardrails.pipeline import (
+        GuardrailPipeline,
+        get_guardrail_pipeline,
+    )
+    from app.modules.guardrails.schemas import GuardrailResult
+
+    mock_pipeline = GuardrailPipeline.__new__(GuardrailPipeline)
+
+    async def always_pass_input(query):
+        return GuardrailResult(
+            passed=True, checks=[], blocked_by=None
+        )
+
+    async def always_pass_output(response, context=""):
+        return GuardrailResult(
+            passed=True, checks=[], blocked_by=None
+        )
+
+    mock_pipeline.check_input = always_pass_input
+    mock_pipeline.check_output = always_pass_output
+
+    app.dependency_overrides[get_guardrail_pipeline] = (
+        lambda: mock_pipeline
+    )
+    yield
+    app.dependency_overrides.pop(
+        get_guardrail_pipeline, None
+    )
+    
 class TestChatEndpoint:
 
     def test_non_streaming_chat_returns_200(

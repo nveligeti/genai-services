@@ -73,9 +73,13 @@ class ConversationRepository:
     async def delete_conversation(
         self, conversation_id: str
     ) -> bool:
+        """
+        Returns False if conversation not found.
+        Returns True after successful deletion.
+        """
         conv = await self.get_conversation(conversation_id)
         if not conv:
-            return False
+            return False          # ← must return False not raise
         await self.session.delete(conv)
         await self.session.flush()
         return True

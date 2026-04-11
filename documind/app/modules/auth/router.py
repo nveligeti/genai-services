@@ -1,7 +1,7 @@
-# app/modules/auth/router.py
-# Chapter 8: auth endpoints
+# app/modules/auth/router.py — replace entire file
 
-from fastapi import APIRouter, Depends
+from typing import Annotated
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db_session
 from app.modules.auth.dependencies import CurrentUserDep
@@ -12,7 +12,6 @@ from app.modules.auth.schemas import (
     UserOut,
 )
 from app.modules.auth.service import AuthService
-from typing import Annotated
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -32,63 +31,41 @@ AuthServiceDep = Annotated[
     "/register",
     response_model=UserOut,
     status_code=201,
-    summary="Register a new user",
 )
 async def register_controller(
+    request: Request,
     body: RegisterRequest,
     service: AuthServiceDep,
 ) -> UserOut:
-    """
-    Public endpoint — no auth required.
-    Chapter 8: returns UserOut (never exposes password).
-    """
     return await service.register(body)
 
 
 @router.post(
     "/login",
     response_model=TokenResponse,
-    summary="Login and receive JWT token",
 )
 async def login_controller(
+    request: Request,
     body: LoginRequest,
     service: AuthServiceDep,
 ) -> TokenResponse:
-    """
-    Public endpoint — no auth required.
-    Chapter 8: returns bearer token on success.
-    """
     return await service.login(body)
 
 
-@router.post(
-    "/logout",
-    status_code=204,
-    summary="Revoke current token",
-)
+@router.post("/logout", status_code=204)
 async def logout_controller(
     current_user: CurrentUserDep,
     service: AuthServiceDep,
 ) -> None:
-    """
-    Protected endpoint — requires valid token.
-    Chapter 8: revokes token so it can't be reused.
-    """
     await service.logout(current_user)
 
 
-@router.get(
-    "/me",
-    response_model=UserOut,
-    summary="Get current user profile",
-)
+@router.get("/me", response_model=UserOut)
 async def me_controller(
     current_user: CurrentUserDep,
     service: AuthServiceDep,
 ) -> UserOut:
-    """Fetch profile of currently authenticated user."""
     from app.modules.auth.repository import UserRepository
-    from app.core.database import get_db_session
     user_repo = UserRepository(service.session)
     user = await user_repo.get_by_id(current_user.user_id)
     return UserOut.model_validate(user)

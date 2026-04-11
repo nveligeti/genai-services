@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 from fastapi import FastAPI
 from loguru import logger
-
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -41,9 +42,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     logger.info(f"Shutting down {settings.app_name}")
 
 
+# app/main.py — update create_app to skip rate limiting in tests
+
 def create_app() -> FastAPI:
-    # All imports INSIDE function — prevents module-level
-    # caching before test overrides are registered
     from app.settings import get_settings
     from app.exceptions import register_exception_handlers
     from app.middleware import register_middleware
@@ -56,9 +57,8 @@ def create_app() -> FastAPI:
     from app.modules.conversations.router import (
         router as conversations_router
     )
-    from app.modules.auth.router import (    # NEW
-        router as auth_router
-    )
+    from app.modules.auth.router import router as auth_router
+
     settings = get_settings()
 
     app = FastAPI(
@@ -70,11 +70,27 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # ── Rate limiting — skip in testing ──────────────────────────
+    if not settings.is_testing:
+        from slowapi import _rate_limit_exceeded_handler
+        from slowapi.errors import RateLimitExceeded
+        from slowapi.middleware import SlowAPIMiddleware
+        from app.core.rate_limiter import (
+            limiter,
+            rate_limit_exceeded_handler,
+        )
+        app.state.limiter = limiter
+        app.add_exception_handler(
+            RateLimitExceeded,
+            rate_limit_exceeded_handler,
+        )
+        app.add_middleware(SlowAPIMiddleware)
+
     register_middleware(app)
     register_exception_handlers(app)
 
     app.include_router(health_router)
-    app.include_router(auth_router)  
+    app.include_router(auth_router)
     app.include_router(documents_router)
     app.include_router(rag_router)
     app.include_router(chat_router)

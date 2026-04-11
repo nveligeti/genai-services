@@ -105,8 +105,10 @@ async def get_conversation_controller(
 async def delete_conversation_controller(
     conversation_id: str,
     session: DBSessionDep,
-    current_user: AdminUserDep,          # ← ADMIN only
+    current_user: AdminUserDep,
 ) -> None:
     repo = ConversationRepository(session)
-    await repo.delete_conversation(conversation_id)
+    deleted = await repo.delete_conversation(conversation_id)
+    if not deleted:
+        raise NotFoundException("Conversation", conversation_id)
     await session.commit()
